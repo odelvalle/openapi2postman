@@ -12,15 +12,15 @@ module.exports = function() {
 	}
 
 	let parameters = global.definition.paths[path][_.toLower(verb)]['parameters'];
-	parameters = replaceRefs(parameters);
+	// parameters = replaceRefs(parameters);
 	const queryParams = _.filter(parameters, ['in', 'query'])
 	const result = []
 	_.forEach(queryParams, function(queryParam) {	
 		result.push({ 
-			name : queryParam.name , 
+			name : queryParam.name, 
 			type : queryParam.type, 
 			required : queryParam.required,
-			default: queryParam.default
+			example: getExamples(queryParam)
 		});
 	})
 
@@ -54,6 +54,21 @@ module.exports = function() {
 			}
 		}
 		return result;
+	}
+
+	function getExamples(queryParam) {
+		if (queryParam.type === 'array') {
+				return queryParam.example;
+		} else {
+			if (queryParam.hasOwnProperty('examples')) {
+				const value = queryParam.examples[Object.keys(queryParam.examples)[0]];
+				return value[Object.keys(value)[0]];
+			} else if (queryParam.hasOwnProperty('default')) {
+				return queryParam.default;
+			} else {
+				return queryParam.example !== undefined ? queryParam.example : '';
+			}
+		}	
 	}
 
 }()

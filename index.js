@@ -8,15 +8,17 @@ const fs   = require('fs');
 
 //PARSER-------------------------------- */
 let configurationFile
+
 try {
 	configurationFile = JSON.parse(fs.readFileSync(argv.configuration, "utf8"))
 } catch(err) {
-	require('./src/utils/error.js')('Configuration file does not exist or is not correct: ' + argv.configuration);
+	require('./src/utils/error.js')('configuration file does not exist or is not correct: ' + argv.configuration);
 }
 
 global.definition = require('./src/parser/definition.js')()
 const version = require('./src/parser/version.js')()
 global.environmentVariables = {}
+global.testParams = {}
 global.configurationFile = configurationFile
 require('./src/parser/'+version+'/refs.js')()
 
@@ -35,13 +37,12 @@ _.forEach(endpointsParsed, function (endpointParsed, i) {
 	endpointsParsed[i].queryParams = require('./src/parser/'+version+'/queryParams.js')(endpointParsed.verb, endpointParsed.path)
 	endpointsParsed[i].summary = require('./src/parser/summary.js')(endpointParsed.verb, endpointParsed.path)
 });
-
 //GENERATOR-------------------------------- */
-const endpointsPostman = [];
+let endpointsPostman = [];
 const endpoints = require('./src/generator/endpoints.js')(endpointsParsed);
 _.forEach(endpoints, function (endpoint, i) {
 	endpoint = require('./src/generator/testStatus.js')(endpoint);
-	endpoint = require('./src/generator/testBody.js')(endpoint);
+	endpoint = require('./src/generator/testBody.js')(endpoint, configurationFile);
 	endpoint = require('./src/generator/contentType.js')(endpoint);
 	endpoint = require('./src/generator/authorization.js')(endpoint, endpoint.aux.status)
 	global.currentId = endpoint.request.method + endpoint.request.url.path[0]
@@ -57,13 +58,25 @@ _.forEach(endpoints, function (endpoint, i) {
 		let endpointPostman
 		do{
 			endpointPostman = require('./src/generator/queryParamsRequired.js')(endpoint,true)
-			if (endpointPostman){
+			if (endpointPostman) {
 				endpointPostman = require('./src/generator/body.js')(endpointPostman)
-				endpointPostman.name += '.without.' + _.last(global.queryParamsRequiredAdded) ;
-				endpointPostman.aux.suffix = '.without.' +_.last(global.queryParamsRequiredAdded) ;
+				if (endpointPostman.aux.hasOwnProperty('suffix') && endpointPostman.aux.suffix.includes('wrong')) {
+					endpointPostman.name += '.with.' + endpointPostman.aux.suffix;
+					endpointPostman = require('./src/generator/queryParamsRequired.js')(endpointPostman);
+					endpointPostman.request.url.path[0] = _.replace(endpointPostman.request.url.path[0], '{{' +endpointPostman.aux.suffix.split(' ')[1]+ '}}', '{{' +endpointPostman.aux.suffix.split(' ')[1]+ '_wrong}}')
+				} else {
+					endpointPostman.name += '.without.' + _.last(global.queryParamsRequiredAdded);
+					endpointPostman.aux.suffix = '.without.' +_.last(global.queryParamsRequiredAdded);
+				}
 				endpointsPostman.push(endpointPostman);
 			}
 		} while(endpointPostman)
+		
+		const endpointWithoutQueryParamsRequired = require('./src/generator/queryParamsNotRequired.js')(endpoint);
+		if (endpointWithoutQueryParamsRequired && endpoint) {
+			endpointsPostman.push(endpointWithoutQueryParamsRequired);
+		}
+		
 		addBadRequestEndpoints(endpointsPostman, endpoint, 'requiredParams', '', true, false);
 		addBadRequestEndpoints(endpointsPostman, endpoint, 'wrongParams', '.wrong', false, true);
 	} else if ((endpoint.aux.status >= 200 && endpoint.aux.status < 300) || ((endpoint.aux.status === 401 || endpoint.aux.status === 403) && endpoint.aux.authorization)) {
@@ -73,16 +86,27 @@ _.forEach(endpoints, function (endpoint, i) {
 	}
 })
 
+const uniqueArray = [];
+const hashTable = {};
+
+endpointsPostman.forEach(obj => {
+  const key = JSON.stringify(obj);
+  if (!hashTable[key]) {
+    hashTable[key] = true;
+    uniqueArray.push(obj);
+  }
+});
+endpointsPostman = uniqueArray;
+	
 //EXPORT-------------------------------- */
-let apiName = argv.api_name || configurationFile.api_name;
+const apiName = argv.api_name || configurationFile.api_name;
 let environments = configurationFile.environments;
 _.forEach(environments, function (element) {
 	const endpointsStage = _.cloneDeep(endpointsPostman)
 	let exclude = {}
-	if ( element.read_only ){
+	if ( element.read_only ) {
 		exclude.write = true
 	}
-
 	// Se añaden casos de éxito por cada scope indicado en el fichero de configuración
 	// También se añaden los nuevos tokens como variables en la cabecera Authorization
 	if (element.has_scopes) {
@@ -114,32 +138,28 @@ _.forEach(environments, function (element) {
 			}
 		}
 	}
-
 	if ( element.custom_authorizations_file ) {
 		require('./src/parser/authorizationRequests.js')(endpointsStage,element.custom_authorizations_file)
 	} else {
 		// Elimina la cabecera Authorization de las peticiones en Postman
 		exclude.auth = true
 	}
-	let endpointsPostmanWithFolders = require('./src/generator/folders.js')(endpointsStage, exclude)
+  let endpointsPostmanWithFolders = require('./src/generator/folders.js')(endpointsStage, exclude)
+	// Crea el listado de variables de entorno
 	let environmentVariables = require('./src/generator/environmentVariablesNames.js')(endpointsPostmanWithFolders)
-	
 	// Añadir letras a los TestCases con el mismo status code para diferenciarlos en el Runner
 	for (let i = element.custom_authorizations_file ? 1 : 0; i < endpointsPostmanWithFolders.length; i++) {
 		addLettersToName(endpointsPostmanWithFolders[i].item);
 	}
 	
-	if (element.validate_schema === false){
-		require('./src/generator/validateSchema.js')(endpointsPostmanWithFolders)
-	}
-	if ( apiName ) {
+	require('./src/generator/validateSchema.js')(endpointsPostmanWithFolders, element.validate_schema)
+	if ( typeof apiName === "string" &&  apiName !== undefined ) {
 		element.postman_collection_name = _.replace(element.postman_collection_name, '%api_name%', apiName)
 		element.postman_environment_name = _.replace(element.postman_environment_name, '%api_name%', apiName)
 	}
 	require('./src/generator/collection.js')(element.target_folder, element.postman_collection_name, endpointsPostmanWithFolders)
 	require('./src/generator/environment.js')(element.target_folder, element.postman_environment_name, element.host, element.port, schemaHostBasePath,environmentVariables)
 })
-
 function addBadRequestEndpoints(endpointsPostman, endpointBase, memoryAlreadyAdded, suffix, withoutRequired, withWrongParam) {
 	global[memoryAlreadyAdded] = [];
 	do {
@@ -168,11 +188,10 @@ function createEndpointWithScope(endpoint, name) {
 }
 
 function addLettersToName(collection) {
-	let alphabet = 'abcdefghijklmnopqrstuvwxyz'.split('');
+	const alphabet = 'abcdefghijklmnopqrstuvwxyz'.split('');
 
 	for (let i in collection) {
 		let orderedCollection = _.groupBy(collection[i].item, function(item) { return item.aux.status });
-		
 		for (let j in orderedCollection) {
 			let array = orderedCollection[j];
 			if (array.length > 1) {

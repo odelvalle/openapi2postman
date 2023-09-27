@@ -16,7 +16,7 @@ module.exports = function() {
     } else if(swagger.type === 'object'){
       return getExampleForObject()
     } else if(swagger.type === 'array'){
-      return getExampleForArray()
+      return getExampleForArray(swagger.example, isWrong)
     }
     return getExampleForNumber(swagger.example, isWrong, swagger.maximum, swagger.minimum);
   }
@@ -25,8 +25,11 @@ module.exports = function() {
     return getValueFromConfigurationFile('wrong','object','badobject')
   }
 
-  function getExampleForArray() {
-    return getValueFromConfigurationFile('wrong','array','badarray')
+  function getExampleForArray(example, isWrong) {
+    if (isWrong) {
+      return getValueFromConfigurationFile('wrong','array','badarray');
+    }
+    return typeof example !== 'undefined' ? example : getValueFromConfigurationFile('wrong','array','badarray');
   }
 
   function getExampleForString(example, isWrong, maxLength) {
@@ -64,7 +67,7 @@ module.exports = function() {
     }
     return typeof example !== 'undefined' ? example : getValueFromConfigurationFile('successful','date_time','anydate');
   }
-
+  
   function getExampleForNumber(example, isWrong, max, min) {
     if (isWrong) {
       // Devuelve max + 1 o min - 1 para casos de error, si existen

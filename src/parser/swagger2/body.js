@@ -6,29 +6,35 @@ const _ = require('lodash');
 
 module.exports = function() {
   
-  return function get(verb, path, bodyResponse){
+  return function get(verb, path, bodyResponse) {
   	if (!_.isObject(global.definition.paths)) {
-		require('../../utils/error.js')('paths is required');
-	}
+      require('../../utils/error.js')('paths is required');
+    }
 
-	const endpoint = global.definition.paths[path][_.toLower(verb)];
-	if (!bodyResponse){
-    let bodyParameter = replaceRefs(endpoint['parameters']);
-		const body = _.find(bodyParameter, ['in', 'body']);
-		if (!body) {
-			return undefined;
-		}
-		const withOutRefs = replaceRefs(body.schema);
-		return replaceAllOfs(withOutRefs);
-	}
-	const bodyResponses = {};
-	_.forEach(endpoint['responses'], function(response, status) {
-		if (response.schema){
-			const withOutRefs = replaceRefs(response.schema);
-			bodyResponses[status] = replaceAllOfs(withOutRefs);
-		}
-	});
-	return bodyResponses;
+    const endpoint = global.definition.paths[path][_.toLower(verb)];
+    if (!bodyResponse){
+      let bodyParameter = replaceRefs(endpoint['parameters']);
+      const body = _.find(bodyParameter, ['in', 'body']);
+      if (!body) {
+        return undefined;
+      }
+      const withOutRefs = replaceRefs(body.schema);
+      return replaceAllOfs(withOutRefs);
+    }
+    const bodyResponses = {};
+    _.forEach(endpoint['responses'], function(response, status) {
+      if (response.schema){
+        const withOutRefs = replaceRefs(response.schema);
+        bodyResponses[status] = replaceAllOfs(withOutRefs);
+        if (bodyResponses[status].hasOwnProperty('required')) {
+          const requiredWtihoutDuplicates = bodyResponses[status].required.filter((value, index, arr) => {
+            return arr.indexOf(value) === index;
+          });
+          bodyResponses[status].required = requiredWtihoutDuplicates; 
+        }
+      }
+    });
+    return bodyResponses;
   };
 
   function replaceRefs(schema){

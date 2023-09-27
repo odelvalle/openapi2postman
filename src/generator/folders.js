@@ -10,9 +10,9 @@ module.exports = function() {
   	const result = []
   	_.forEach(endpointsPostman, function(endpointPostman){
   		if (!endpointPostman.authType && exclude.write && (endpointPostman.request.method !== 'GET' && endpointPostman.request.method !== 'OPTIONS')){
-        return
+        return;
       } else if ((endpointPostman.authType || endpointPostman.aux.status == 401  || endpointPostman.aux.status == 403) && exclude.auth){
-        return
+        return;
       } else if (endpointPostman.authType){
         let folderRoot = _.find(result, ['name', 'authorizations']);
         if (!folderRoot) {
@@ -62,7 +62,10 @@ module.exports = function() {
 
   // Numeración de los Test Cases
   function numerate(collection){
-    let countRoot = 1
+    let countRoot = 1;
+    if (collection.find(s => s.name === 'authorizations')) {
+      countRoot = 0;
+    }  
     for (let i in collection){
       let countItem = 1
       let numerateRoot = _.padStart(countRoot, 2, '0') + '.'

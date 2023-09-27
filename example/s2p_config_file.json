@@ -1,6 +1,8 @@
 {
     "api_name" : "japi_rest_ejemplo_alumnos",
     "is_inline": false,
+    "schema_is_inline": false,
+    "schema_pretty_print": true,
     "examples" : {
         "wrong" : {
             "string" : "badstring",

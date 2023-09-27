@@ -9,7 +9,7 @@ describe('generator-testBody', () => {
     const definitionInitial = require('../seeds/generatorTestBodyInitial.json');
     const definitionResult = require('../seeds/generatorTestBodyResult.json');
 
-    const definition = require('../src/generator/testBody.js')(definitionInitial);
+    const definition = require('../src/generator/testBody.js')(definitionInitial, {schema_pretty_print: false});
     assert.deepStrictEqual(definition, definitionResult);
   });
 
